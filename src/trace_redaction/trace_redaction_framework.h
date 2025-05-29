@@ -27,8 +27,10 @@
 
 #include "perfetto/base/flat_set.h"
 #include "perfetto/base/status.h"
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "src/trace_redaction/frame_cookie.h"
 #include "src/trace_redaction/process_thread_timeline.h"
+#include "src/trace_redaction/process_trees.h"
 
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
 
@@ -87,7 +89,8 @@ class SystemInfo {
 
 class SyntheticProcess {
  public:
-  explicit SyntheticProcess(const std::vector<int32_t>& tids) : tids_(tids) {}
+  SyntheticProcess(const int32_t* tids, size_t length)
+      : tids_(tids, tids + length) {}
 
   // Use the SYSTEM_UID (i.e. 1000) because it best represents this "type" of
   // process.
@@ -352,6 +355,13 @@ class Context {
   std::optional<SystemInfo> system_info;
 
   std::unique_ptr<SyntheticProcess> synthetic_process;
+
+  // `process_trees` contains process/threads for each process tree across the
+  // trace. `process_trees` will contain all process trees from the trace, but
+  // can also contain new process trees. For example, when a primitive is adding
+  // new processes/threads, new trees will be created.
+  ProcessTrees process_trees;
+  ProcessTreesMask process_trees_mask;
 };
 
 // Extracts low-level data from the trace and writes it into the context. The

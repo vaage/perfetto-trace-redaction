@@ -38,7 +38,6 @@
 #include "src/trace_redaction/prune_package_list.h"
 #include "src/trace_redaction/redact_ftrace_events.h"
 #include "src/trace_redaction/redact_process_events.h"
-#include "src/trace_redaction/redact_process_trees.h"
 #include "src/trace_redaction/scrub_process_stats.h"
 #include "src/trace_redaction/trace_redaction_framework.h"
 #include "src/trace_redaction/verify_integrity.h"
@@ -262,10 +261,16 @@ std::unique_ptr<TraceRedactor> TraceRedactor::CreateInstance(
   // Configure the primitive to remove processes and threads that don't belong
   // to the target package and adds a process and threads for the synth thread
   // group and threads.
+  // {
+  //   auto* primitive = redactor->emplace_transform<RedactProcessTrees>();
+  //   primitive->emplace_modifier<ProcessTreeCreateSynthThreads>();
+  //   primitive->emplace_filter<ConnectedToPackage>();
+  // }
+
+  // Process tree modification.
   {
-    auto* primitive = redactor->emplace_transform<RedactProcessTrees>();
-    primitive->emplace_modifier<ProcessTreeCreateSynthThreads>();
-    primitive->emplace_filter<ConnectedToPackage>();
+    {
+    }
   }
 
   return redactor;

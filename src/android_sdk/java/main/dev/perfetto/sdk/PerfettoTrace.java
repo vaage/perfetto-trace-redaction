@@ -18,6 +18,7 @@ package dev.perfetto.sdk;
 
 import dalvik.annotation.optimization.CriticalNative;
 import dalvik.annotation.optimization.FastNative;
+
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,271 +32,275 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @hide
  */
 public final class PerfettoTrace {
-  private static final String TAG = "PerfettoTrace";
+    private static final String TAG = "PerfettoTrace";
 
-  // Keep in sync with C++
-  private static final int PERFETTO_TE_TYPE_SLICE_BEGIN = 1;
-  private static final int PERFETTO_TE_TYPE_SLICE_END = 2;
-  private static final int PERFETTO_TE_TYPE_INSTANT = 3;
-  private static final int PERFETTO_TE_TYPE_COUNTER = 4;
+    // Keep in sync with C++
+    private static final int PERFETTO_TE_TYPE_SLICE_BEGIN = 1;
+    private static final int PERFETTO_TE_TYPE_SLICE_END = 2;
+    private static final int PERFETTO_TE_TYPE_INSTANT = 3;
+    private static final int PERFETTO_TE_TYPE_COUNTER = 4;
 
-  private static boolean sIsDebug = false;
+    private static boolean sIsDebug = false;
 
-  static class NativeAllocationRegistry {
-    public static NativeAllocationRegistry createMalloced(
-        ClassLoader classLoader, long freeFunction) {
-      // do nothing
-      return new NativeAllocationRegistry();
+    static class NativeAllocationRegistry {
+        public static NativeAllocationRegistry createMalloced(
+                ClassLoader classLoader, long freeFunction) {
+            // do nothing
+            return new NativeAllocationRegistry();
+        }
+
+        public void registerNativeAllocation(Object obj, long ptr) {
+            // do nothing
+        }
     }
 
-    public void registerNativeAllocation(Object obj, long ptr) {
-      // do nothing
-    }
-  }
-
-  /** For fetching the next flow event id in a process. */
-  private static final AtomicInteger sFlowEventId = new AtomicInteger();
-
-  /**
-   * Perfetto category a trace event belongs to. Registering a category is not sufficient to capture
-   * events within the category, it must also be enabled in the trace config.
-   */
-  public static final class Category implements PerfettoTrackEventExtra.PerfettoPointer {
-    private static final NativeAllocationRegistry sRegistry =
-        NativeAllocationRegistry.createMalloced(Category.class.getClassLoader(), native_delete());
-
-    private final long mPtr;
-    private final long mExtraPtr;
-    private final String mName;
-    private final List<String> mTags;
-    private boolean mIsRegistered;
+    /** For fetching the next flow event id in a process. */
+    private static final AtomicInteger sFlowEventId = new AtomicInteger();
 
     /**
-     * Category ctor.
-     *
-     * @param name The category name.
+     * Perfetto category a trace event belongs to. Registering a category is not sufficient to
+     * capture events within the category, it must also be enabled in the trace config.
      */
-    public Category(String name) {
-      this(name, List.of());
+    public static final class Category implements PerfettoTrackEventExtra.PerfettoPointer {
+        private static final NativeAllocationRegistry sRegistry =
+                NativeAllocationRegistry.createMalloced(
+                        Category.class.getClassLoader(), native_delete());
+
+        private final long mPtr;
+        private final long mExtraPtr;
+        private final String mName;
+        private final List<String> mTags;
+        private boolean mIsRegistered;
+
+        /**
+         * Category ctor.
+         *
+         * @param name The category name.
+         */
+        public Category(String name) {
+            this(name, List.of());
+        }
+
+        /**
+         * Category ctor.
+         *
+         * @param name The category name.
+         * @param tags A list of tags associated with this category.
+         */
+        public Category(String name, List<String> tags) {
+            mName = name;
+            mTags = tags;
+            mPtr = native_init(name, tags.toArray(new String[0]));
+            mExtraPtr = native_get_extra_ptr(mPtr);
+        }
+
+        @FastNative
+        private static native long native_init(String name, String[] tags);
+
+        @CriticalNative
+        private static native long native_delete();
+
+        @CriticalNative
+        private static native void native_register(long ptr);
+
+        @CriticalNative
+        private static native void native_unregister(long ptr);
+
+        @CriticalNative
+        private static native boolean native_is_enabled(long ptr);
+
+        @CriticalNative
+        private static native long native_get_extra_ptr(long ptr);
+
+        /** Register the category. */
+        public Category register() {
+            native_register(mPtr);
+            mIsRegistered = true;
+            return this;
+        }
+
+        /** Unregister the category. */
+        public Category unregister() {
+            native_unregister(mPtr);
+            mIsRegistered = false;
+            return this;
+        }
+
+        /** Whether the category is enabled or not. */
+        public boolean isEnabled() {
+            return native_is_enabled(mPtr);
+        }
+
+        /** Whether the category is registered or not. */
+        public boolean isRegistered() {
+            return mIsRegistered;
+        }
+
+        /** Returns the native pointer for the category. */
+        @Override
+        public long getPtr() {
+            return mExtraPtr;
+        }
+
+        public String getName() {
+            return mName;
+        }
+
+        public List<String> getTags() {
+            return mTags;
+        }
     }
 
     /**
-     * Category ctor.
+     * Manages a perfetto tracing session. Constructing this object with a config automatically
+     * starts a tracing session. Each session must be closed after use and then the resulting trace
+     * bytes can be read.
      *
-     * @param name The category name.
-     * @param tags A list of tags associated with this category.
+     * <p>The session could be in process or system wide, depending on {@code isBackendInProcess}.
+     * This functionality is intended for testing.
      */
-    public Category(String name, List<String> tags) {
-      mName = name;
-      mTags = tags;
-      mPtr = native_init(name, tags.toArray(new String[0]));
-      mExtraPtr = native_get_extra_ptr(mPtr);
+    public static final class Session {
+        private final long mPtr;
+
+        /** Session ctor. */
+        public Session(boolean isBackendInProcess, byte[] config) {
+            mPtr = native_start_session(isBackendInProcess, config);
+        }
+
+        /** Closes the session and returns the trace. */
+        public byte[] close() {
+            return native_stop_session(mPtr);
+        }
     }
+
+    @CriticalNative
+    private static native long native_get_process_track_uuid();
+
+    @CriticalNative
+    private static native long native_get_thread_track_uuid(long tid);
 
     @FastNative
-    private static native long native_init(String name, String[] tags);
+    private static native void native_activate_trigger(String name, int ttlMs);
 
-    @CriticalNative
-    private static native long native_delete();
+    @FastNative
+    private static native void native_register(boolean isBackendInProcess);
 
-    @CriticalNative
-    private static native void native_register(long ptr);
+    private static native long native_start_session(boolean isBackendInProcess, byte[] config);
 
-    @CriticalNative
-    private static native void native_unregister(long ptr);
+    private static native byte[] native_stop_session(long ptr);
 
-    @CriticalNative
-    private static native boolean native_is_enabled(long ptr);
-
-    @CriticalNative
-    private static native long native_get_extra_ptr(long ptr);
-
-    /** Register the category. */
-    public Category register() {
-      native_register(mPtr);
-      mIsRegistered = true;
-      return this;
+    /**
+     * Writes a trace message to indicate a given section of code was invoked.
+     *
+     * @param category The perfetto category.
+     * @param eventName The event name to appear in the trace.
+     */
+    public static PerfettoTrackEventBuilder instant(Category category, String eventName) {
+        return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_INSTANT, category, sIsDebug)
+                .setEventName(eventName);
     }
 
-    /** Unregister the category. */
-    public Category unregister() {
-      native_unregister(mPtr);
-      mIsRegistered = false;
-      return this;
+    /**
+     * Writes a trace message to indicate the start of a given section of code.
+     *
+     * @param category The perfetto category.
+     * @param eventName The event name to appear in the trace.
+     */
+    public static PerfettoTrackEventBuilder begin(Category category, String eventName) {
+        return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_SLICE_BEGIN, category, sIsDebug)
+                .setEventName(eventName);
     }
 
-    /** Whether the category is enabled or not. */
-    public boolean isEnabled() {
-      return native_is_enabled(mPtr);
+    /**
+     * Writes a trace message to indicate the end of a given section of code.
+     *
+     * @param category The perfetto category.
+     */
+    public static PerfettoTrackEventBuilder end(Category category) {
+        return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_SLICE_END, category, sIsDebug);
     }
 
-    /** Whether the category is registered or not. */
-    public boolean isRegistered() {
-      return mIsRegistered;
+    /**
+     * Writes a trace message to indicate the value of a given section of code.
+     *
+     * @param category The perfetto category.
+     * @param value The value of the counter.
+     */
+    public static PerfettoTrackEventBuilder counter(Category category, long value) {
+        return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_COUNTER, category, sIsDebug)
+                .setCounter(value);
     }
 
-    /** Returns the native pointer for the category. */
-    @Override
-    public long getPtr() {
-      return mExtraPtr;
+    /**
+     * Writes a trace message to indicate the value of a given section of code.
+     *
+     * @param category The perfetto category.
+     * @param value The value of the counter.
+     * @param trackName The trackName for the event.
+     */
+    public static PerfettoTrackEventBuilder counter(
+            Category category, long value, String trackName) {
+        return counter(category, value).usingProcessCounterTrack(trackName);
     }
 
-    public String getName() {
-      return mName;
+    /**
+     * Writes a trace message to indicate the value of a given section of code.
+     *
+     * @param category The perfetto category.
+     * @param value The value of the counter.
+     */
+    public static PerfettoTrackEventBuilder counter(Category category, double value) {
+        return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_COUNTER, category, sIsDebug)
+                .setCounter(value);
     }
 
-    public List<String> getTags() {
-      return mTags;
-    }
-  }
-
-  /**
-   * Manages a perfetto tracing session. Constructing this object with a config automatically starts
-   * a tracing session. Each session must be closed after use and then the resulting trace bytes can
-   * be read.
-   *
-   * <p>The session could be in process or system wide, depending on {@code isBackendInProcess}.
-   * This functionality is intended for testing.
-   */
-  public static final class Session {
-    private final long mPtr;
-
-    /** Session ctor. */
-    public Session(boolean isBackendInProcess, byte[] config) {
-      mPtr = native_start_session(isBackendInProcess, config);
+    /**
+     * Writes a trace message to indicate the value of a given section of code.
+     *
+     * @param category The perfetto category.
+     * @param value The value of the counter.
+     * @param trackName The trackName for the event.
+     */
+    public static PerfettoTrackEventBuilder counter(
+            Category category, double value, String trackName) {
+        return counter(category, value).usingProcessCounterTrack(trackName);
     }
 
-    /** Closes the session and returns the trace. */
-    public byte[] close() {
-      return native_stop_session(mPtr);
+    /** Returns the next flow id to be used. */
+    public static int getFlowId() {
+        return sFlowEventId.incrementAndGet();
     }
-  }
 
-  @CriticalNative
-  private static native long native_get_process_track_uuid();
+    /** Returns the global track uuid that can be used as a parent track uuid. */
+    public static long getGlobalTrackUuid() {
+        return 0;
+    }
 
-  @CriticalNative
-  private static native long native_get_thread_track_uuid(long tid);
+    /** Returns the process track uuid that can be used as a parent track uuid. */
+    public static long getProcessTrackUuid() {
+        return native_get_process_track_uuid();
+    }
 
-  @FastNative
-  private static native void native_activate_trigger(String name, int ttlMs);
+    /**
+     * Given a thread tid, returns the thread track uuid that can be used as a parent track uuid.
+     */
+    public static long getThreadTrackUuid(long tid) {
+        return native_get_thread_track_uuid(tid);
+    }
 
-  @FastNative
-  private static native void native_register(boolean isBackendInProcess);
+    /** Activates a trigger by name {@code triggerName} with expiry in {@code ttlMs}. */
+    public static void activateTrigger(String triggerName, int ttlMs) {
+        native_activate_trigger(triggerName, ttlMs);
+    }
 
-  private static native long native_start_session(boolean isBackendInProcess, byte[] config);
+    /** Registers the process with Perfetto. */
+    public static void register(boolean isBackendInProcess) {
+        native_register(isBackendInProcess);
+    }
 
-  private static native byte[] native_stop_session(long ptr);
-
-  /**
-   * Writes a trace message to indicate a given section of code was invoked.
-   *
-   * @param category The perfetto category.
-   * @param eventName The event name to appear in the trace.
-   */
-  public static PerfettoTrackEventBuilder instant(Category category, String eventName) {
-    return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_INSTANT, category, sIsDebug)
-        .setEventName(eventName);
-  }
-
-  /**
-   * Writes a trace message to indicate the start of a given section of code.
-   *
-   * @param category The perfetto category.
-   * @param eventName The event name to appear in the trace.
-   */
-  public static PerfettoTrackEventBuilder begin(Category category, String eventName) {
-    return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_SLICE_BEGIN, category, sIsDebug)
-        .setEventName(eventName);
-  }
-
-  /**
-   * Writes a trace message to indicate the end of a given section of code.
-   *
-   * @param category The perfetto category.
-   */
-  public static PerfettoTrackEventBuilder end(Category category) {
-    return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_SLICE_END, category, sIsDebug);
-  }
-
-  /**
-   * Writes a trace message to indicate the value of a given section of code.
-   *
-   * @param category The perfetto category.
-   * @param value The value of the counter.
-   */
-  public static PerfettoTrackEventBuilder counter(Category category, long value) {
-    return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_COUNTER, category, sIsDebug)
-        .setCounter(value);
-  }
-
-  /**
-   * Writes a trace message to indicate the value of a given section of code.
-   *
-   * @param category The perfetto category.
-   * @param value The value of the counter.
-   * @param trackName The trackName for the event.
-   */
-  public static PerfettoTrackEventBuilder counter(Category category, long value, String trackName) {
-    return counter(category, value).usingProcessCounterTrack(trackName);
-  }
-
-  /**
-   * Writes a trace message to indicate the value of a given section of code.
-   *
-   * @param category The perfetto category.
-   * @param value The value of the counter.
-   */
-  public static PerfettoTrackEventBuilder counter(Category category, double value) {
-    return PerfettoTrackEventBuilder.newEvent(PERFETTO_TE_TYPE_COUNTER, category, sIsDebug)
-        .setCounter(value);
-  }
-
-  /**
-   * Writes a trace message to indicate the value of a given section of code.
-   *
-   * @param category The perfetto category.
-   * @param value The value of the counter.
-   * @param trackName The trackName for the event.
-   */
-  public static PerfettoTrackEventBuilder counter(
-      Category category, double value, String trackName) {
-    return counter(category, value).usingProcessCounterTrack(trackName);
-  }
-
-  /** Returns the next flow id to be used. */
-  public static int getFlowId() {
-    return sFlowEventId.incrementAndGet();
-  }
-
-  /** Returns the global track uuid that can be used as a parent track uuid. */
-  public static long getGlobalTrackUuid() {
-    return 0;
-  }
-
-  /** Returns the process track uuid that can be used as a parent track uuid. */
-  public static long getProcessTrackUuid() {
-    return native_get_process_track_uuid();
-  }
-
-  /** Given a thread tid, returns the thread track uuid that can be used as a parent track uuid. */
-  public static long getThreadTrackUuid(long tid) {
-    return native_get_thread_track_uuid(tid);
-  }
-
-  /** Activates a trigger by name {@code triggerName} with expiry in {@code ttlMs}. */
-  public static void activateTrigger(String triggerName, int ttlMs) {
-    native_activate_trigger(triggerName, ttlMs);
-  }
-
-  /** Registers the process with Perfetto. */
-  public static void register(boolean isBackendInProcess) {
-    native_register(isBackendInProcess);
-  }
-
-  /** Registers the process with Perfetto and enable additional debug checks on the Java side. */
-  public static void registerWithDebugChecks(boolean isBackendInProcess) {
-    sIsDebug = true;
-    register(isBackendInProcess);
-  }
+    /** Registers the process with Perfetto and enable additional debug checks on the Java side. */
+    public static void registerWithDebugChecks(boolean isBackendInProcess) {
+        sIsDebug = true;
+        register(isBackendInProcess);
+    }
 }

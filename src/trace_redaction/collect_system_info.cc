@@ -85,7 +85,8 @@ base::Status BuildSyntheticThreads::Build(Context* context) const {
     tids[i] = system_info.AllocateSynthThread();
   }
 
-  context->synthetic_process = std::make_unique<SyntheticProcess>(tids);
+  context->synthetic_process =
+      std::make_unique<SyntheticProcess>(tids.data(), tids.size());
 
   return base::OkStatus();
 }

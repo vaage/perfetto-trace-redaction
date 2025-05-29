@@ -17,19 +17,24 @@
 package dev.perfetto.sdk.test;
 
 import static com.google.common.truth.Truth.assertThat;
+
 import static dev.perfetto.sdk.PerfettoTrace.Category;
 import static perfetto.protos.ChromeLatencyInfoOuterClass.ChromeLatencyInfo.LatencyComponentType.COMPONENT_INPUT_EVENT_LATENCY_BEGIN_RWH;
 import static perfetto.protos.ChromeLatencyInfoOuterClass.ChromeLatencyInfo.LatencyComponentType.COMPONENT_INPUT_EVENT_LATENCY_SCROLL_UPDATE_ORIGINAL;
 
 import android.os.Process;
 import android.util.ArraySet;
+
 import androidx.test.ext.junit.runners.AndroidJUnit4;
-import dev.perfetto.sdk.*;
-import java.util.List;
-import java.util.Set;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import java.util.List;
+import java.util.Set;
+
+import dev.perfetto.sdk.*;
 import perfetto.protos.ChromeLatencyInfoOuterClass.ChromeLatencyInfo;
 import perfetto.protos.ChromeLatencyInfoOuterClass.ChromeLatencyInfo.ComponentInfo;
 import perfetto.protos.DataSourceConfigOuterClass.DataSourceConfig;
@@ -56,632 +61,639 @@ import perfetto.protos.TrackEventOuterClass.TrackEvent;
  */
 @RunWith(AndroidJUnit4.class)
 public class PerfettoTraceTest {
-  static {
-    System.loadLibrary("perfetto_jni_lib");
-  }
-
-  private static final String TAG = "PerfettoTraceTest";
-  private static final String FOO = "foo";
-  private static final String BAR = "bar";
-  private static final String TEXT_ABOVE_4K_SIZE = new String(new char[8192]).replace('\0', 'a');
-
-  private static final Category FOO_CATEGORY = new Category(FOO);
-  private static final int MESSAGE = 1234567;
-  private static final int MESSAGE_COUNT = 3;
-
-  private final Set<String> mCategoryNames = new ArraySet<>();
-  private final Set<String> mEventNames = new ArraySet<>();
-  private final Set<String> mDebugAnnotationNames = new ArraySet<>();
-  private final Set<String> mTrackNames = new ArraySet<>();
-
-  @Before
-  public void setUp() {
-    PerfettoTrace.registerWithDebugChecks(true);
-    // 'var unused' suppress error-prone warning
-    var unused = FOO_CATEGORY.register();
-
-    mCategoryNames.clear();
-    mEventNames.clear();
-    mDebugAnnotationNames.clear();
-    mTrackNames.clear();
-  }
-
-  @Test
-  public void testCategoryWithTags() throws Exception {
-    Category category = new Category("MyCategory", List.of("MyTag", "MyOtherTag")).register();
-    TraceConfig traceConfig = getTraceConfig(null, List.of("MyTag"));
-
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
-    PerfettoTrace.instant(category, "event").addArg("arg", 42).emit();
-
-    byte[] traceBytes = session.close();
-    Trace trace = Trace.parseFrom(traceBytes);
-
-    boolean hasTrackEvent = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-      }
-      collectInternedData(packet);
+    static {
+        System.loadLibrary("perfetto_jni_lib");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(mDebugAnnotationNames).contains("arg");
-    assertThat(mEventNames).contains("event");
-    assertThat(mCategoryNames).contains("MyCategory");
-  }
+    private static final String TAG = "PerfettoTraceTest";
+    private static final String FOO = "foo";
+    private static final String BAR = "bar";
+    private static final String TEXT_ABOVE_4K_SIZE = new String(new char[8192]).replace('\0', 'a');
 
-  @Test
-  public void testDebugAnnotations() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+    private static final Category FOO_CATEGORY = new Category(FOO);
+    private static final int MESSAGE = 1234567;
+    private static final int MESSAGE_COUNT = 3;
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+    private final Set<String> mCategoryNames = new ArraySet<>();
+    private final Set<String> mEventNames = new ArraySet<>();
+    private final Set<String> mDebugAnnotationNames = new ArraySet<>();
+    private final Set<String> mTrackNames = new ArraySet<>();
 
-    PerfettoTrace.instant(FOO_CATEGORY, "event")
-        .setFlow(2)
-        .setTerminatingFlow(3)
-        .addArg("long_val", 10000000000L)
-        .addArg("bool_val", true)
-        .addArg("double_val", 3.14)
-        .addArg("string_val", FOO)
-        .emit();
+    @Before
+    public void setUp() {
+        PerfettoTrace.registerWithDebugChecks(true);
+        // 'var unused' suppress error-prone warning
+        var unused = FOO_CATEGORY.register();
 
-    byte[] traceBytes = session.close();
-
-    Trace trace = Trace.parseFrom(traceBytes);
-
-    boolean hasTrackEvent = false;
-    boolean hasDebugAnnotations = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
-
-        if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType())
-            && event.getDebugAnnotationsCount() == 4
-            && event.getFlowIdsCount() == 1
-            && event.getTerminatingFlowIdsCount() == 1) {
-          hasDebugAnnotations = true;
-
-          List<DebugAnnotation> annotations = event.getDebugAnnotationsList();
-
-          assertThat(annotations.get(0).getIntValue()).isEqualTo(10000000000L);
-          assertThat(annotations.get(1).getBoolValue()).isTrue();
-          assertThat(annotations.get(2).getDoubleValue()).isEqualTo(3.14);
-          assertThat(annotations.get(3).getStringValue()).isEqualTo(FOO);
-        }
-      }
-
-      collectInternedData(packet);
+        mCategoryNames.clear();
+        mEventNames.clear();
+        mDebugAnnotationNames.clear();
+        mTrackNames.clear();
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasDebugAnnotations).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
+    @Test
+    public void testCategoryWithTags() throws Exception {
+        Category category = new Category("MyCategory", List.of("MyTag", "MyOtherTag")).register();
+        TraceConfig traceConfig = getTraceConfig(null, List.of("MyTag"));
 
-    assertThat(mDebugAnnotationNames).contains("long_val");
-    assertThat(mDebugAnnotationNames).contains("bool_val");
-    assertThat(mDebugAnnotationNames).contains("double_val");
-    assertThat(mDebugAnnotationNames).contains("string_val");
-  }
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.instant(category, "event").addArg("arg", 42).emit();
 
-  @Test
-  public void testNamedTrack() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        byte[] traceBytes = session.close();
+        Trace trace = Trace.parseFrom(traceBytes);
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
-
-    PerfettoTrace.begin(FOO_CATEGORY, "event")
-        .usingNamedTrack(PerfettoTrace.getProcessTrackUuid(), FOO)
-        .emit();
-
-    PerfettoTrace.end(FOO_CATEGORY)
-        .usingNamedTrack(PerfettoTrace.getThreadTrackUuid(Process.myTid()), "bar")
-        .emit();
-
-    Trace trace = Trace.parseFrom(session.close());
-
-    boolean hasTrackEvent = false;
-    boolean hasTrackUuid = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
-
-        if (TrackEvent.Type.TYPE_SLICE_BEGIN.equals(event.getType()) && event.hasTrackUuid()) {
-          hasTrackUuid = true;
+        boolean hasTrackEvent = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+            }
+            collectInternedData(packet);
         }
 
-        if (TrackEvent.Type.TYPE_SLICE_END.equals(event.getType()) && event.hasTrackUuid()) {
-          hasTrackUuid &= true;
-        }
-      }
-
-      collectInternedData(packet);
-      collectTrackNames(packet);
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(mDebugAnnotationNames).contains("arg");
+        assertThat(mEventNames).contains("event");
+        assertThat(mCategoryNames).contains("MyCategory");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasTrackUuid).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
-    assertThat(mTrackNames).contains(FOO);
-    assertThat(mTrackNames).contains("bar");
-  }
+    @Test
+    public void testDebugAnnotations() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testProcessThreadNamedTrack() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.instant(FOO_CATEGORY, "event")
+                .setFlow(2)
+                .setTerminatingFlow(3)
+                .addArg("long_val", 10000000000L)
+                .addArg("bool_val", true)
+                .addArg("double_val", 3.14)
+                .addArg("string_val", FOO)
+                .emit();
 
-    PerfettoTrace.begin(FOO_CATEGORY, "event").usingProcessNamedTrack(FOO).emit();
+        byte[] traceBytes = session.close();
 
-    PerfettoTrace.end(FOO_CATEGORY).usingThreadNamedTrack(Process.myTid(), "bar").emit();
+        Trace trace = Trace.parseFrom(traceBytes);
 
-    Trace trace = Trace.parseFrom(session.close());
+        boolean hasTrackEvent = false;
+        boolean hasDebugAnnotations = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    boolean hasTrackEvent = false;
-    boolean hasTrackUuid = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
+                if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType())
+                        && event.getDebugAnnotationsCount() == 4 && event.getFlowIdsCount() == 1
+                        && event.getTerminatingFlowIdsCount() == 1) {
+                    hasDebugAnnotations = true;
 
-        if (TrackEvent.Type.TYPE_SLICE_BEGIN.equals(event.getType()) && event.hasTrackUuid()) {
-          hasTrackUuid = true;
-        }
+                    List<DebugAnnotation> annotations = event.getDebugAnnotationsList();
 
-        if (TrackEvent.Type.TYPE_SLICE_END.equals(event.getType()) && event.hasTrackUuid()) {
-          hasTrackUuid &= true;
-        }
-      }
+                    assertThat(annotations.get(0).getIntValue()).isEqualTo(10000000000L);
+                    assertThat(annotations.get(1).getBoolValue()).isTrue();
+                    assertThat(annotations.get(2).getDoubleValue()).isEqualTo(3.14);
+                    assertThat(annotations.get(3).getStringValue()).isEqualTo(FOO);
+                }
+            }
 
-      collectInternedData(packet);
-      collectTrackNames(packet);
-    }
-
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasTrackUuid).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
-    assertThat(mTrackNames).contains(FOO);
-    assertThat(mTrackNames).contains("bar");
-  }
-
-  @Test
-  public void testCounterSimple() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
-
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
-
-    PerfettoTrace.counter(FOO_CATEGORY, 16, FOO).emit();
-
-    PerfettoTrace.counter(FOO_CATEGORY, 3.14, "bar").emit();
-
-    Trace trace = Trace.parseFrom(session.close());
-
-    boolean hasTrackEvent = false;
-    boolean hasCounterValue = false;
-    boolean hasDoubleCounterValue = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
-
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType()) && event.getCounterValue() == 16) {
-          hasCounterValue = true;
+            collectInternedData(packet);
         }
 
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
-            && event.getDoubleCounterValue() == 3.14) {
-          hasDoubleCounterValue = true;
-        }
-      }
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasDebugAnnotations).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
 
-      collectTrackNames(packet);
+        assertThat(mDebugAnnotationNames).contains("long_val");
+        assertThat(mDebugAnnotationNames).contains("bool_val");
+        assertThat(mDebugAnnotationNames).contains("double_val");
+        assertThat(mDebugAnnotationNames).contains("string_val");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasCounterValue).isTrue();
-    assertThat(hasDoubleCounterValue).isTrue();
-    assertThat(mTrackNames).contains(FOO);
-    assertThat(mTrackNames).contains(BAR);
-  }
+    @Test
+    public void testNamedTrack() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testCounter() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.begin(FOO_CATEGORY, "event")
+                .usingNamedTrack(PerfettoTrace.getProcessTrackUuid(), FOO)
+                .emit();
 
-    PerfettoTrace.counter(FOO_CATEGORY, 16)
-        .usingCounterTrack(PerfettoTrace.getProcessTrackUuid(), FOO)
-        .emit();
+        PerfettoTrace.end(FOO_CATEGORY)
+                .usingNamedTrack(PerfettoTrace.getThreadTrackUuid(Process.myTid()), "bar")
+                .emit();
 
-    PerfettoTrace.counter(FOO_CATEGORY, 3.14)
-        .usingCounterTrack(PerfettoTrace.getThreadTrackUuid(Process.myTid()), "bar")
-        .emit();
+        Trace trace = Trace.parseFrom(session.close());
 
-    Trace trace = Trace.parseFrom(session.close());
+        boolean hasTrackEvent = false;
+        boolean hasTrackUuid = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    boolean hasTrackEvent = false;
-    boolean hasCounterValue = false;
-    boolean hasDoubleCounterValue = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
+                if (TrackEvent.Type.TYPE_SLICE_BEGIN.equals(event.getType())
+                        && event.hasTrackUuid()) {
+                    hasTrackUuid = true;
+                }
 
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType()) && event.getCounterValue() == 16) {
-          hasCounterValue = true;
-        }
+                if (TrackEvent.Type.TYPE_SLICE_END.equals(event.getType())
+                        && event.hasTrackUuid()) {
+                    hasTrackUuid &= true;
+                }
+            }
 
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
-            && event.getDoubleCounterValue() == 3.14) {
-          hasDoubleCounterValue = true;
-        }
-      }
-
-      collectTrackNames(packet);
-    }
-
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasCounterValue).isTrue();
-    assertThat(hasDoubleCounterValue).isTrue();
-    assertThat(mTrackNames).contains(FOO);
-    assertThat(mTrackNames).contains("bar");
-  }
-
-  @Test
-  public void testProcessThreadCounter() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
-
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
-
-    PerfettoTrace.counter(FOO_CATEGORY, 16).usingProcessCounterTrack(FOO).emit();
-
-    PerfettoTrace.counter(FOO_CATEGORY, 3.14)
-        .usingThreadCounterTrack(Process.myTid(), "bar")
-        .emit();
-
-    Trace trace = Trace.parseFrom(session.close());
-
-    boolean hasTrackEvent = false;
-    boolean hasCounterValue = false;
-    boolean hasDoubleCounterValue = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
-
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType()) && event.getCounterValue() == 16) {
-          hasCounterValue = true;
+            collectInternedData(packet);
+            collectTrackNames(packet);
         }
 
-        if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
-            && event.getDoubleCounterValue() == 3.14) {
-          hasDoubleCounterValue = true;
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasTrackUuid).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
+        assertThat(mTrackNames).contains(FOO);
+        assertThat(mTrackNames).contains("bar");
+    }
+
+    @Test
+    public void testProcessThreadNamedTrack() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
+
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+
+        PerfettoTrace.begin(FOO_CATEGORY, "event").usingProcessNamedTrack(FOO).emit();
+
+        PerfettoTrace.end(FOO_CATEGORY).usingThreadNamedTrack(Process.myTid(), "bar").emit();
+
+        Trace trace = Trace.parseFrom(session.close());
+
+        boolean hasTrackEvent = false;
+        boolean hasTrackUuid = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
+
+                if (TrackEvent.Type.TYPE_SLICE_BEGIN.equals(event.getType())
+                        && event.hasTrackUuid()) {
+                    hasTrackUuid = true;
+                }
+
+                if (TrackEvent.Type.TYPE_SLICE_END.equals(event.getType())
+                        && event.hasTrackUuid()) {
+                    hasTrackUuid &= true;
+                }
+            }
+
+            collectInternedData(packet);
+            collectTrackNames(packet);
         }
-      }
 
-      collectTrackNames(packet);
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasTrackUuid).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
+        assertThat(mTrackNames).contains(FOO);
+        assertThat(mTrackNames).contains("bar");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasCounterValue).isTrue();
-    assertThat(hasDoubleCounterValue).isTrue();
-    assertThat(mTrackNames).contains(FOO);
-    assertThat(mTrackNames).contains("bar");
-  }
+    @Test
+    public void testCounterSimple() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testProto() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.counter(FOO_CATEGORY, 16, FOO).emit();
 
-    PerfettoTrace.instant(FOO_CATEGORY, "event_proto")
-        .beginProto()
-        .beginNested(33L)
-        .addField(4L, 2L)
-        .addField(3, "ActivityManagerService.java:11489")
-        .endNested()
-        .addField(2001, "AIDL::IActivityManager")
-        .endProto()
-        .emit();
+        PerfettoTrace.counter(FOO_CATEGORY, 3.14, "bar").emit();
 
-    byte[] traceBytes = session.close();
+        Trace trace = Trace.parseFrom(session.close());
 
-    Trace trace = Trace.parseFrom(traceBytes);
+        boolean hasTrackEvent = false;
+        boolean hasCounterValue = false;
+        boolean hasDoubleCounterValue = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    boolean hasTrackEvent = false;
-    boolean hasSourceLocation = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getCounterValue() == 16) {
+                    hasCounterValue = true;
+                }
 
-        if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType()) && event.hasSourceLocation()) {
-          SourceLocation loc = event.getSourceLocation();
-          if ("ActivityManagerService.java:11489".equals(loc.getFunctionName())
-              && loc.getLineNumber() == 2) {
-            hasSourceLocation = true;
-          }
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getDoubleCounterValue() == 3.14) {
+                    hasDoubleCounterValue = true;
+                }
+            }
+
+            collectTrackNames(packet);
         }
-      }
 
-      collectInternedData(packet);
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasCounterValue).isTrue();
+        assertThat(hasDoubleCounterValue).isTrue();
+        assertThat(mTrackNames).contains(FOO);
+        assertThat(mTrackNames).contains(BAR);
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasSourceLocation).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
-  }
+    @Test
+    public void testCounter() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testProtoWithSlowPath() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.counter(FOO_CATEGORY, 16)
+                .usingCounterTrack(PerfettoTrace.getProcessTrackUuid(), FOO)
+                .emit();
 
-    PerfettoTrace.instant(FOO_CATEGORY, "event_proto")
-        .beginProto()
-        .beginNested(33L)
-        .addField(4L, 2L)
-        .addField(3, TEXT_ABOVE_4K_SIZE)
-        .endNested()
-        .addField(2001, "AIDL::IActivityManager")
-        .endProto()
-        .emit();
+        PerfettoTrace.counter(FOO_CATEGORY, 3.14)
+                .usingCounterTrack(PerfettoTrace.getThreadTrackUuid(Process.myTid()), "bar")
+                .emit();
 
-    byte[] traceBytes = session.close();
+        Trace trace = Trace.parseFrom(session.close());
 
-    Trace trace = Trace.parseFrom(traceBytes);
+        boolean hasTrackEvent = false;
+        boolean hasCounterValue = false;
+        boolean hasDoubleCounterValue = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    boolean hasTrackEvent = false;
-    boolean hasSourceLocation = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getCounterValue() == 16) {
+                    hasCounterValue = true;
+                }
 
-        if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType()) && event.hasSourceLocation()) {
-          SourceLocation loc = event.getSourceLocation();
-          if (TEXT_ABOVE_4K_SIZE.equals(loc.getFunctionName()) && loc.getLineNumber() == 2) {
-            hasSourceLocation = true;
-          }
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getDoubleCounterValue() == 3.14) {
+                    hasDoubleCounterValue = true;
+                }
+            }
+
+            collectTrackNames(packet);
         }
-      }
 
-      collectInternedData(packet);
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasCounterValue).isTrue();
+        assertThat(hasDoubleCounterValue).isTrue();
+        assertThat(mTrackNames).contains(FOO);
+        assertThat(mTrackNames).contains("bar");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasSourceLocation).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
-  }
+    @Test
+    public void testProcessThreadCounter() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testProtoNested() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.counter(FOO_CATEGORY, 16).usingProcessCounterTrack(FOO).emit();
 
-    PerfettoTrace.instant(FOO_CATEGORY, "event_proto_nested")
-        .beginProto()
-        .beginNested(29L)
-        .beginNested(4L)
-        .addField(1L, 2)
-        .addField(2L, 20000)
-        .endNested()
-        .beginNested(4L)
-        .addField(1L, 1)
-        .addField(2L, 40000)
-        .endNested()
-        .endNested()
-        .endProto()
-        .emit();
+        PerfettoTrace.counter(FOO_CATEGORY, 3.14)
+                .usingThreadCounterTrack(Process.myTid(), "bar")
+                .emit();
 
-    byte[] traceBytes = session.close();
+        Trace trace = Trace.parseFrom(session.close());
 
-    Trace trace = Trace.parseFrom(traceBytes);
+        boolean hasTrackEvent = false;
+        boolean hasCounterValue = false;
+        boolean hasDoubleCounterValue = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    boolean hasTrackEvent = false;
-    boolean hasChromeLatencyInfo = false;
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getCounterValue() == 16) {
+                    hasCounterValue = true;
+                }
 
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
+                if (TrackEvent.Type.TYPE_COUNTER.equals(event.getType())
+                        && event.getDoubleCounterValue() == 3.14) {
+                    hasDoubleCounterValue = true;
+                }
+            }
 
-        if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType()) && event.hasChromeLatencyInfo()) {
-          ChromeLatencyInfo latencyInfo = event.getChromeLatencyInfo();
-          if (latencyInfo.getComponentInfoCount() == 2) {
-            hasChromeLatencyInfo = true;
-            ComponentInfo cmpInfo1 = latencyInfo.getComponentInfo(0);
-            assertThat(cmpInfo1.getComponentType())
-                .isEqualTo(COMPONENT_INPUT_EVENT_LATENCY_SCROLL_UPDATE_ORIGINAL);
-            assertThat(cmpInfo1.getTimeUs()).isEqualTo(20000);
-
-            ComponentInfo cmpInfo2 = latencyInfo.getComponentInfo(1);
-            assertThat(cmpInfo2.getComponentType())
-                .isEqualTo(COMPONENT_INPUT_EVENT_LATENCY_BEGIN_RWH);
-            assertThat(cmpInfo2.getTimeUs()).isEqualTo(40000);
-          }
+            collectTrackNames(packet);
         }
-      }
 
-      collectInternedData(packet);
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasCounterValue).isTrue();
+        assertThat(hasDoubleCounterValue).isTrue();
+        assertThat(mTrackNames).contains(FOO);
+        assertThat(mTrackNames).contains("bar");
     }
 
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(hasChromeLatencyInfo).isTrue();
-    assertThat(mCategoryNames).contains(FOO);
-  }
+    @Test
+    public void testProto() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  @Test
-  public void testActivateTrigger() throws Exception {
-    TraceConfig traceConfig = getTriggerTraceConfig(FOO, FOO);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+        PerfettoTrace.instant(FOO_CATEGORY, "event_proto")
+                .beginProto()
+                .beginNested(33L)
+                .addField(4L, 2L)
+                .addField(3, "ActivityManagerService.java:11489")
+                .endNested()
+                .addField(2001, "AIDL::IActivityManager")
+                .endProto()
+                .emit();
 
-    PerfettoTrace.instant(FOO_CATEGORY, "event_trigger").emit();
+        byte[] traceBytes = session.close();
 
-    PerfettoTrace.activateTrigger(FOO, 1000);
+        Trace trace = Trace.parseFrom(traceBytes);
 
-    byte[] traceBytes = session.close();
+        boolean hasTrackEvent = false;
+        boolean hasSourceLocation = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
 
-    Trace trace = Trace.parseFrom(traceBytes);
+                if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType())
+                        && event.hasSourceLocation()) {
+                    SourceLocation loc = event.getSourceLocation();
+                    if ("ActivityManagerService.java:11489".equals(loc.getFunctionName())
+                            && loc.getLineNumber() == 2) {
+                        hasSourceLocation = true;
+                    }
+                }
+            }
 
-    boolean hasTrackEvent = false;
-    boolean hasChromeLatencyInfo = false;
-
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-      }
-
-      collectInternedData(packet);
-    }
-
-    assertThat(mCategoryNames).contains(FOO);
-  }
-
-  @Test
-  public void testRegister() throws Exception {
-    TraceConfig traceConfig = getTraceConfig(BAR);
-
-    Category barCategory = new Category(BAR);
-    PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
-
-    PerfettoTrace.instant(barCategory, "event").addArg("before", 1).emit();
-    // 'var unused' suppress error-prone warning
-    var unused = barCategory.register();
-
-    PerfettoTrace.instant(barCategory, "event").addArg("after", 1).emit();
-
-    byte[] traceBytes = session.close();
-
-    Trace trace = Trace.parseFrom(traceBytes);
-
-    boolean hasTrackEvent = false;
-    for (TracePacket packet : trace.getPacketList()) {
-      TrackEvent event;
-      if (packet.hasTrackEvent()) {
-        hasTrackEvent = true;
-        event = packet.getTrackEvent();
-      }
-
-      collectInternedData(packet);
-    }
-
-    assertThat(hasTrackEvent).isTrue();
-    assertThat(mCategoryNames).contains(BAR);
-
-    assertThat(mDebugAnnotationNames).contains("after");
-    assertThat(mDebugAnnotationNames).doesNotContain("before");
-  }
-
-  private TrackEvent getTrackEvent(Trace trace, int idx) {
-    int curIdx = 0;
-    for (TracePacket packet : trace.getPacketList()) {
-      if (packet.hasTrackEvent()) {
-        if (curIdx++ == idx) {
-          return packet.getTrackEvent();
+            collectInternedData(packet);
         }
-      }
+
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasSourceLocation).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
     }
 
-    return null;
-  }
+    @Test
+    public void testProtoWithSlowPath() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-  private TraceConfig getTraceConfig(String enableCategory, List<String> enableTags) {
-    BufferConfig bufferConfig = BufferConfig.newBuilder().setSizeKb(1024).build();
-    TrackEventConfig.Builder trackEventConfigBuilder = TrackEventConfig.newBuilder();
-    if (enableCategory != null) {
-      trackEventConfigBuilder.addEnabledCategories(enableCategory);
-    }
-    if (enableTags != null) {
-      for (String tag : enableTags) {
-        trackEventConfigBuilder.addEnabledTags(tag);
-      }
-    }
-    TrackEventConfig trackEventConfig = trackEventConfigBuilder.build();
-    DataSourceConfig dsConfig =
-        DataSourceConfig.newBuilder()
-            .setName("track_event")
-            .setTargetBuffer(0)
-            .setTrackEventConfig(trackEventConfig)
-            .build();
-    DataSource ds = DataSource.newBuilder().setConfig(dsConfig).build();
-    TraceConfig traceConfig =
-        TraceConfig.newBuilder().addBuffers(bufferConfig).addDataSources(ds).build();
-    return traceConfig;
-  }
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-  private TraceConfig getTraceConfig(String enableCategory) {
-    return getTraceConfig(enableCategory, null);
-  }
+        PerfettoTrace.instant(FOO_CATEGORY, "event_proto")
+                .beginProto()
+                .beginNested(33L)
+                .addField(4L, 2L)
+                .addField(3, TEXT_ABOVE_4K_SIZE)
+                .endNested()
+                .addField(2001, "AIDL::IActivityManager")
+                .endProto()
+                .emit();
 
-  private TraceConfig getTriggerTraceConfig(String cat, String triggerName) {
-    BufferConfig bufferConfig = BufferConfig.newBuilder().setSizeKb(1024).build();
-    TrackEventConfig trackEventConfig =
-        TrackEventConfig.newBuilder().addEnabledCategories(cat).build();
-    DataSourceConfig dsConfig =
-        DataSourceConfig.newBuilder()
-            .setName("track_event")
-            .setTargetBuffer(0)
-            .setTrackEventConfig(trackEventConfig)
-            .build();
-    DataSource ds = DataSource.newBuilder().setConfig(dsConfig).build();
-    Trigger trigger = Trigger.newBuilder().setName(triggerName).build();
-    TriggerConfig triggerConfig =
-        TriggerConfig.newBuilder()
-            .setTriggerMode(TriggerConfig.TriggerMode.STOP_TRACING)
-            .setTriggerTimeoutMs(1000)
-            .addTriggers(trigger)
-            .build();
-    TraceConfig traceConfig =
-        TraceConfig.newBuilder()
-            .addBuffers(bufferConfig)
-            .addDataSources(ds)
-            .setTriggerConfig(triggerConfig)
-            .build();
-    return traceConfig;
-  }
+        byte[] traceBytes = session.close();
 
-  private void collectInternedData(TracePacket packet) {
-    if (!packet.hasInternedData()) {
-      return;
+        Trace trace = Trace.parseFrom(traceBytes);
+
+        boolean hasTrackEvent = false;
+        boolean hasSourceLocation = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
+
+                if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType())
+                        && event.hasSourceLocation()) {
+                    SourceLocation loc = event.getSourceLocation();
+                    if (TEXT_ABOVE_4K_SIZE.equals(loc.getFunctionName())
+                            && loc.getLineNumber() == 2) {
+                        hasSourceLocation = true;
+                    }
+                }
+            }
+
+            collectInternedData(packet);
+        }
+
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasSourceLocation).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
     }
 
-    InternedData data = packet.getInternedData();
+    @Test
+    public void testProtoNested() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(FOO);
 
-    for (EventCategory cat : data.getEventCategoriesList()) {
-      mCategoryNames.add(cat.getName());
-    }
-    for (EventName ev : data.getEventNamesList()) {
-      mEventNames.add(ev.getName());
-    }
-    for (DebugAnnotationName dbg : data.getDebugAnnotationNamesList()) {
-      mDebugAnnotationNames.add(dbg.getName());
-    }
-  }
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
 
-  private void collectTrackNames(TracePacket packet) {
-    if (!packet.hasTrackDescriptor()) {
-      return;
+        PerfettoTrace.instant(FOO_CATEGORY, "event_proto_nested")
+                .beginProto()
+                .beginNested(29L)
+                .beginNested(4L)
+                .addField(1L, 2)
+                .addField(2L, 20000)
+                .endNested()
+                .beginNested(4L)
+                .addField(1L, 1)
+                .addField(2L, 40000)
+                .endNested()
+                .endNested()
+                .endProto()
+                .emit();
+
+        byte[] traceBytes = session.close();
+
+        Trace trace = Trace.parseFrom(traceBytes);
+
+        boolean hasTrackEvent = false;
+        boolean hasChromeLatencyInfo = false;
+
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
+
+                if (TrackEvent.Type.TYPE_INSTANT.equals(event.getType())
+                        && event.hasChromeLatencyInfo()) {
+                    ChromeLatencyInfo latencyInfo = event.getChromeLatencyInfo();
+                    if (latencyInfo.getComponentInfoCount() == 2) {
+                        hasChromeLatencyInfo = true;
+                        ComponentInfo cmpInfo1 = latencyInfo.getComponentInfo(0);
+                        assertThat(cmpInfo1.getComponentType())
+                                .isEqualTo(COMPONENT_INPUT_EVENT_LATENCY_SCROLL_UPDATE_ORIGINAL);
+                        assertThat(cmpInfo1.getTimeUs()).isEqualTo(20000);
+
+                        ComponentInfo cmpInfo2 = latencyInfo.getComponentInfo(1);
+                        assertThat(cmpInfo2.getComponentType())
+                                .isEqualTo(COMPONENT_INPUT_EVENT_LATENCY_BEGIN_RWH);
+                        assertThat(cmpInfo2.getTimeUs()).isEqualTo(40000);
+                    }
+                }
+            }
+
+            collectInternedData(packet);
+        }
+
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(hasChromeLatencyInfo).isTrue();
+        assertThat(mCategoryNames).contains(FOO);
     }
-    TrackDescriptor desc = packet.getTrackDescriptor();
-    mTrackNames.add(desc.getName());
-  }
+
+    @Test
+    public void testActivateTrigger() throws Exception {
+        TraceConfig traceConfig = getTriggerTraceConfig(FOO, FOO);
+
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+
+        PerfettoTrace.instant(FOO_CATEGORY, "event_trigger").emit();
+
+        PerfettoTrace.activateTrigger(FOO, 1000);
+
+        byte[] traceBytes = session.close();
+
+        Trace trace = Trace.parseFrom(traceBytes);
+
+        boolean hasTrackEvent = false;
+        boolean hasChromeLatencyInfo = false;
+
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+            }
+
+            collectInternedData(packet);
+        }
+
+        assertThat(mCategoryNames).contains(FOO);
+    }
+
+    @Test
+    public void testRegister() throws Exception {
+        TraceConfig traceConfig = getTraceConfig(BAR);
+
+        Category barCategory = new Category(BAR);
+        PerfettoTrace.Session session = new PerfettoTrace.Session(true, traceConfig.toByteArray());
+
+        PerfettoTrace.instant(barCategory, "event").addArg("before", 1).emit();
+        // 'var unused' suppress error-prone warning
+        var unused = barCategory.register();
+
+        PerfettoTrace.instant(barCategory, "event").addArg("after", 1).emit();
+
+        byte[] traceBytes = session.close();
+
+        Trace trace = Trace.parseFrom(traceBytes);
+
+        boolean hasTrackEvent = false;
+        for (TracePacket packet : trace.getPacketList()) {
+            TrackEvent event;
+            if (packet.hasTrackEvent()) {
+                hasTrackEvent = true;
+                event = packet.getTrackEvent();
+            }
+
+            collectInternedData(packet);
+        }
+
+        assertThat(hasTrackEvent).isTrue();
+        assertThat(mCategoryNames).contains(BAR);
+
+        assertThat(mDebugAnnotationNames).contains("after");
+        assertThat(mDebugAnnotationNames).doesNotContain("before");
+    }
+
+    private TrackEvent getTrackEvent(Trace trace, int idx) {
+        int curIdx = 0;
+        for (TracePacket packet : trace.getPacketList()) {
+            if (packet.hasTrackEvent()) {
+                if (curIdx++ == idx) {
+                    return packet.getTrackEvent();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private TraceConfig getTraceConfig(String enableCategory, List<String> enableTags) {
+        BufferConfig bufferConfig = BufferConfig.newBuilder().setSizeKb(1024).build();
+        TrackEventConfig.Builder trackEventConfigBuilder = TrackEventConfig.newBuilder();
+        if (enableCategory != null) {
+            trackEventConfigBuilder.addEnabledCategories(enableCategory);
+        }
+        if (enableTags != null) {
+            for (String tag : enableTags) {
+                trackEventConfigBuilder.addEnabledTags(tag);
+            }
+        }
+        TrackEventConfig trackEventConfig = trackEventConfigBuilder.build();
+        DataSourceConfig dsConfig = DataSourceConfig.newBuilder()
+                                            .setName("track_event")
+                                            .setTargetBuffer(0)
+                                            .setTrackEventConfig(trackEventConfig)
+                                            .build();
+        DataSource ds = DataSource.newBuilder().setConfig(dsConfig).build();
+        TraceConfig traceConfig =
+                TraceConfig.newBuilder().addBuffers(bufferConfig).addDataSources(ds).build();
+        return traceConfig;
+    }
+
+    private TraceConfig getTraceConfig(String enableCategory) {
+        return getTraceConfig(enableCategory, null);
+    }
+
+    private TraceConfig getTriggerTraceConfig(String cat, String triggerName) {
+        BufferConfig bufferConfig = BufferConfig.newBuilder().setSizeKb(1024).build();
+        TrackEventConfig trackEventConfig =
+                TrackEventConfig.newBuilder().addEnabledCategories(cat).build();
+        DataSourceConfig dsConfig = DataSourceConfig.newBuilder()
+                                            .setName("track_event")
+                                            .setTargetBuffer(0)
+                                            .setTrackEventConfig(trackEventConfig)
+                                            .build();
+        DataSource ds = DataSource.newBuilder().setConfig(dsConfig).build();
+        Trigger trigger = Trigger.newBuilder().setName(triggerName).build();
+        TriggerConfig triggerConfig =
+                TriggerConfig.newBuilder()
+                        .setTriggerMode(TriggerConfig.TriggerMode.STOP_TRACING)
+                        .setTriggerTimeoutMs(1000)
+                        .addTriggers(trigger)
+                        .build();
+        TraceConfig traceConfig = TraceConfig.newBuilder()
+                                          .addBuffers(bufferConfig)
+                                          .addDataSources(ds)
+                                          .setTriggerConfig(triggerConfig)
+                                          .build();
+        return traceConfig;
+    }
+
+    private void collectInternedData(TracePacket packet) {
+        if (!packet.hasInternedData()) {
+            return;
+        }
+
+        InternedData data = packet.getInternedData();
+
+        for (EventCategory cat : data.getEventCategoriesList()) {
+            mCategoryNames.add(cat.getName());
+        }
+        for (EventName ev : data.getEventNamesList()) {
+            mEventNames.add(ev.getName());
+        }
+        for (DebugAnnotationName dbg : data.getDebugAnnotationNamesList()) {
+            mDebugAnnotationNames.add(dbg.getName());
+        }
+    }
+
+    private void collectTrackNames(TracePacket packet) {
+        if (!packet.hasTrackDescriptor()) {
+            return;
+        }
+        TrackDescriptor desc = packet.getTrackDescriptor();
+        mTrackNames.add(desc.getName());
+    }
 }
